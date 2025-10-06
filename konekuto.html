@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>四目並べ</title>
+<style>
+  body {
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #f0f8ff;
+    padding: 20px;
+  }
+  
+  h2 {
+    color: #1d3557;
+  }
+
+  /* ゲームボードのスタイル */
+  #gameBoard {
+    display: grid;
+    grid-template-columns: repeat(7, 60px); /* 7列 */
+    grid-template-rows: repeat(6, 60px);    /* 6行 */
+    border: 5px solid #457b9d;
+    background-color: #457b9d; /* ボードの枠色 */
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  }
+
+  .cell {
+    width: 60px;
+    height: 60px;
+    background-color: #f1faee; /* マス目の色（空） */
+    border: 1px solid #457b9d;
+    border-radius: 50%; /* 丸い穴のように見せる */
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* 駒のスタイル */
+  .chip {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    /* 初期は透明 */
+    transform: scale(0); 
+    transition: transform 0.3s ease-out;
+  }
+  .player-chip {
+    background-color: #e63946; /* プレイヤー1: 赤 */
+    transform: scale(1);
+  }
+  .cpu-chip {
+    background-color: #ffc107; /* CPU: 黄色 */
+    transform: scale(1);
+  }
+
+  /* 結果表示エリア */
+  #messageArea {
+    margin-top: 20px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #e63946;
+    min-height: 40px;
+  }
+  
+  /* リセットボタン */
+  #resetButton {
+    padding: 10px 20px;
+    font-size: 18px;
+    margin-top: 15px;
+    cursor: pointer;
+    background-color: #1d3557;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    transition: background-color 0.2s;
+  }
+  #resetButton:hover {
+    background-color: #457b9d;
+  }
+</style>
+</head>
+<body>
+
+  <h2>四目並べ (Connect Four)</h2>
+
+  <div id="gameBoard" onclick="handleBoardClick(event)">
+    </div>
+
+  <div id="messageArea">あなたの番です ()</div>
+
+  <button id="resetButton" onclick="initGame()">リセット</button>
+
+<script>
+// JavaScript: ゲームロジック
+
+// ----------------------------------------------
+// 定数と変数
+// ----------------------------------------------
+
+const ROWS = 6;
+const COLS = 7;
+const EMPTY = 0;
+const PLAYER = 1; // プレイヤーのID (赤: )
+const CPU = 2;    // CPUのID (黄: )
+
+let board = [];        // 盤面の状態 (ROWS x COLSの2次元配列)
+let currentPlayer = PLAYER;
+let isGameOver = false;
+
+const gameBoardDiv = document.getElementById('gameBoard');
+const messageArea = document.getElementById('messageArea');
+
+// ----------------------------------------------
+// 初期化・描画
+// ----------------------------------------------
+
+function initGame() {
+    // 盤面の状態をリセット (すべて空)
+    board = Array(ROWS).fill(0).map(() => Array(COLS).fill(EMPTY));
+    currentPlayer = PLAYER;
+    isGameOver = false;
+    
+    renderBoard();
+    updateMessage("あなたの番です ()");
+    document.getElementById('resetButton').textContent = 'リセット';
+}
+
+function renderBoard() {
+    gameBoardDiv.innerHTML = '';
+    gameBoardDiv.style.pointerEvents = isGameOver ? 'none' : 'auto';
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'cell';
+            cellDiv.dataset.col = c; // クリックされた列を判定するためにデータ属性を追加
+
+            const chipDiv = document.createElement('div');
+            chipDiv.className = 'chip';
+
+            if (board[r][c] === PLAYER) {
+                chipDiv.classList.add('player-chip');
+            } else if (board[r][c] === CPU) {
+                chipDiv.classList.add('cpu-chip');
+            }
+
+            cellDiv.appendChild(chipDiv);
+            gameBoardDiv.appendChild(cellDiv);
+        }
+    }
+}
+
+function updateMessage(message, isEnd = false) {
+    messageArea.textContent = message;
+    messageArea.style.color = isEnd ? '#1d3557' : '#e63946';
+}
+
+// ----------------------------------------------
+// ゲームロジック
+// ----------------------------------------------
+
+// クリックされた列の空いている一番下の行を返す (重力判定)
+function getNextOpenRow(col) {
+    for (let r = ROWS - 1; r >= 0; r--) {
+        if (board[r][col] === EMPTY) {
+            return r;
+        }
+    }
+    return -1; // 列が埋まっている
+}
+
+function handleBoardClick(event) {
+    if (isGameOver || currentPlayer !== PLAYER || isAnimating) return;
+    
+    // クリックされたマス（セル）から列を取得
+    let targetCell = event.target.closest('.cell');
+    if (!targetCell) return;
+    
+    const col = parseInt(targetCell.dataset.col);
+    const row = getNextOpenRow(col);
+
+    if (row !== -1) {
+        dropChip(row, col, PLAYER);
+    } else {
+        updateMessage("その列はいっぱいです。別の列を選んでください。");
+    }
+}
+
+let isAnimating = false; // アニメーション中のフラグ
+
+function dropChip(row, col, player) {
+    isAnimating = true;
+    board[row][col] = player;
+
+    // 盤面を再描画して石をドロップした状態にする
+    renderBoard(); 
+
+    // 勝敗判定
+    if (checkWin(row, col, player)) {
+        isGameOver = true;
+        updateMessage(player === PLAYER ? "あなたの勝ちです！" : "コンピューターの勝ちです！", true);
+        document.getElementById('resetButton').textContent = 'もう一度プレイ';
+        isAnimating = false;
+        return;
+    }
+
+    // 引き分け判定
+    if (board.every(row => row.every(cell => cell !== EMPTY))) {
+        isGameOver = true;
+        updateMessage("引き分けです！", true);
+        document.getElementById('resetButton').textContent = 'もう一度プレイ';
+        isAnimating = false;
+        return;
+    }
+
+    // ターン切り替え
+    currentPlayer = (player === PLAYER) ? CPU : PLAYER;
+    updateMessage(currentPlayer === PLAYER ? "あなたの番です ()" : "コンピューターの番です ()");
+
+    isAnimating = false;
+    
+    // CPUのターンであれば自動で手を打つ
+    if (currentPlayer === CPU && !isGameOver) {
+        setTimeout(cpuMove, 1000); // 1秒後にCPUが動作
+    }
+}
+
+// ----------------------------------------------
+// 勝敗判定 (四目並びチェック)
+// ----------------------------------------------
+
+function checkWin(r, c, player) {
+    // 縦、横、斜めの4方向をチェック
+    return checkDirection(r, c, player, 1, 0) || // 縦
+           checkDirection(r, c, player, 0, 1) || // 横
+           checkDirection(r, c, player, 1, 1) || // 右斜め上
+           checkDirection(r, c, player, 1, -1); // 左斜め上
+}
+
+function checkDirection(r, c, player, dr, dc) {
+    let count = 0;
+    
+    // 1. 正の方向（dr, dc）をチェック
+    let tempR = r;
+    let tempC = c;
+    while (tempR >= 0 && tempR < ROWS && tempC >= 0 && tempC < COLS && board[tempR][tempC] === player) {
+        count++;
+        tempR += dr;
+        tempC += dc;
+    }
+
+    // 2. 負の方向（-dr, -dc）をチェック (スタート地点のチップは既にカウント済みなので、-1から開始)
+    tempR = r - dr;
+    tempC = c - dc;
+    while (tempR >= 0 && tempR < ROWS && tempC >= 0 && tempC < COLS && board[tempR][tempC] === player) {
+        count++;
+        tempR -= dr;
+        tempC -= dc;
+    }
+
+    return count >= 4;
+}
+
+// ----------------------------------------------
+// CPU (簡易AI) ロジック
+// ----------------------------------------------
+
+function cpuMove() {
+    if (isGameOver || currentPlayer !== CPU) return;
+    
+    let bestCol = -1;
+    let bestScore = -Infinity;
+
+    // 簡易的なAI:
+    // 1. 勝利できる手があれば、その列を選ぶ
+    // 2. プレイヤーの勝利を阻止できる手があれば、その列を選ぶ
+    // 3. それ以外はランダムに空いている列を選ぶ
+
+    let availableCols = [];
+    for (let c = 0; c < COLS; c++) {
+        let r = getNextOpenRow(c);
+        if (r !== -1) {
+            availableCols.push(c);
+
+            // 1. 勝利判定 (CPUが打つ場合)
+            board[r][c] = CPU;
+            if (checkWin(r, c, CPU)) {
+                bestCol = c;
+                board[r][c] = EMPTY; // 盤面を元に戻す
+                dropChip(r, c, CPU);
+                return;
+            }
+            board[r][c] = EMPTY; // 盤面を元に戻す
+
+            // 2. プレイヤーの勝利阻止判定 (プレイヤーが打つ場合)
+            board[r][c] = PLAYER;
+            if (checkWin(r, c, PLAYER)) {
+                // スコアが高く、まだ最善手でなければ更新
+                if (bestScore < 10) { 
+                    bestScore = 10;
+                    bestCol = c;
+                }
+            }
+            board[r][c] = EMPTY; // 盤面を元に戻す
+        }
+    }
+    
+    // 最適な手が見つかっていればそれを選択
+    if (bestCol !== -1) {
+        let r = getNextOpenRow(bestCol);
+        if (r !== -1) {
+            dropChip(r, bestCol, CPU);
+            return;
+        }
+    }
+    
+    // 3. それ以外はランダムに手を選ぶ
+    if (availableCols.length > 0) {
+        const randomCol = availableCols[Math.floor(Math.random() * availableCols.length)];
+        let r = getNextOpenRow(randomCol);
+        if (r !== -1) {
+            dropChip(r, randomCol, CPU);
+        }
+    }
+}
+
+// ----------------------------------------------
+// ゲーム開始
+// ----------------------------------------------
+initGame();
+</script>
+
+</body>
+</html>
