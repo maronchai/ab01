@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>坊主めくり (伝統版)</title>
+<style>
+  body {
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #f0f8ff; /* 淡い水色 */
+    padding: 20px;
+  }
+  
+  /* プレイエリア全体 */
+  #gameContainer {
+    width: 800px;
+    background-color: #ffffff;
+    border: 3px solid #4a148c; /* 濃い紫の枠 */
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  }
+
+  /* 札（カード）の見た目 */
+  .card {
+    width: 80px;
+    height: 120px;
+    background-color: #ffccbc; /* 淡いオレンジ */
+    border: 3px solid #e57373; /* 赤系の枠 */
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 14px;
+    font-weight: bold;
+    color: #4a148c;
+    cursor: pointer;
+    box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.3);
+    user-select: none;
+    transition: transform 0.1s;
+  }
+  .card:hover {
+    transform: scale(1.05);
+  }
+  .card-back {
+    background-color: #a8dadc; /* 裏面の色 */
+    border-color: #457b9d;
+    font-size: 20px;
+    color: #1d3557;
+    content: "裏";
+  }
+
+  /* 中央の山の配置 */
+  #deck {
+    width: 80px;
+    height: 120px;
+    margin: 20px auto;
+    position: relative;
+    cursor: pointer;
+  }
+  #deck .card {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translate(0, 0);
+  }
+
+  /* 結果表示エリア */
+  #resultArea {
+    min-height: 50px;
+    font-size: 18px;
+    font-weight: bold;
+    color: #e63946;
+    margin-top: 10px;
+    text-align: center;
+  }
+
+  /* プレイヤー情報エリア */
+  #playerArea {
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .player-info {
+    padding: 10px;
+    border: 1px dashed #4a148c;
+    border-radius: 5px;
+    margin: 5px;
+    width: 120px;
+    text-align: center;
+  }
+  .active-player {
+    background-color: #fff9c4; /* 現在のターンのプレイヤーを強調 */
+    border: 2px solid #f57f17;
+  }
+
+  /* 選択画面 */
+  #setupScreen {
+    text-align: center;
+    padding: 40px;
+  }
+  #setupScreen button {
+    padding: 10px 20px;
+    font-size: 18px;
+    margin: 5px;
+    cursor: pointer;
+    background-color: #a8dadc;
+    border: none;
+    border-radius: 5px;
+  }
+</style>
+</head>
+<body>
+
+<div id="setupScreen">
+  <h2>対戦人数を選んでね！</h2>
+  <p>自分以外はコンピューターだよ。</p>
+  <select id="playerCountSelect">
+    <option value="2">2人</option>
+    <option value="3">3人</option>
+    <option value="4">4人</option>
+    <option value="5">5人</option>
+    <option value="6">6人</option>
+  </select>
+  <button onclick="setupGame()">ゲーム開始</button>
+</div>
+
+<div id="gameContainer" style="display: none;">
+  <h2>札の山 (残り <span id="deckCountDisplay">100</span>枚)</h2>
+  <div id="deck">
+    <div id="deckCard" class="card card-back" onclick="handleCardClick()">めくる</div>
+  </div>
+
+  <div id="resultArea"></div>
+
+  <h3>プレイヤー状況</h3>
+  <div id="playerArea">
+    </div>
+</div>
+
+<script>
+// JavaScript: ゲームロジック
+
+// ----------------------------------------------
+// 定数と変数
+// ----------------------------------------------
+
+const CARD_TYPES = {
+    BOZU: 0,    // 坊主札 (ペナルティ)
+    NYOBO: 1,   // 女房札 (ボーナス)
+    KASEN: 2    // 歌仙札 (通常)
+};
+
+// ★伝統的な坊主めくりの札の枚数設定に修正
+const CARD_COUNTS = {
+    [CARD_TYPES.BOZU]: 14,  // 坊主札: 14枚
+    [CARD_TYPES.NYOBO]: 43, // 女房札: 43枚
+    [CARD_TYPES.KASEN]: 43  // 歌仙札: 43枚
+};
+const TOTAL_CARDS = 100;
+
+let deck = [];          // 札の山（配列）
+let players = [];       // プレイヤー情報
+let currentPlayerIndex = 0; // 現在のプレイヤー
+let isGameActive = false;
+let isAnimating = false;
+
+const resultArea = document.getElementById('resultArea');
+const playerArea = document.getElementById('playerArea');
+const deckCard = document.getElementById('deckCard');
+const deckCountDisplay = document.getElementById('deckCountDisplay');
+
+// ----------------------------------------------
+// 初期設定
+// ----------------------------------------------
+
+function createDeck() {
+    deck = [];
+    for (const type in CARD_COUNTS) {
+        for (let i = 0; i < CARD_COUNTS[type]; i++) {
+            deck.push(parseInt(type)); // 札の種類を配列に追加
+        }
+    }
+    // Fisher-Yatesシャッフルアルゴリズムで混ぜる
+    for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+}
+
+function setupGame() {
+    const playerCount = parseInt(document.getElementById('playerCountSelect').value);
+    
+    // プレイヤーデータの初期化
+    players = [];
+    for (let i = 0; i < playerCount; i++) {
+        players.push({
+            id: i,
+            name: i === 0 ? 'あなた' : `CPU${i}`,
+            score: 0,
+            stolenCards: [], // 坊主札で失った札
+        });
+    }
+
+    createDeck();
+    currentPlayerIndex = 0;
+    isGameActive = true;
+
+    // 画面切り替え
+    document.getElementById('setupScreen').style.display = 'none';
+    document.getElementById('gameContainer').style.display = 'block';
+    
+    // 札の枚数を表示
+    deckCountDisplay.textContent = deck.length;
+    deckCard.textContent = `札 ${deck.length}枚`;
+    deckCard.classList.add('card-back');
+
+    renderPlayers();
+    updateResult(`ゲームスタート！${players[currentPlayerIndex].name}の番です。`);
+}
+
+// ----------------------------------------------
+// 描画・更新
+// ----------------------------------------------
+
+function renderPlayers() {
+    playerArea.innerHTML = '';
+    players.forEach(player => {
+        const div = document.createElement('div');
+        div.className = 'player-info';
+        if (player.id === currentPlayerIndex) {
+            div.classList.add('active-player');
+        }
+        div.innerHTML = `
+            <div>${player.name}</div>
+            <div>獲得札: ${player.score}枚</div>
+            <div>失った札: ${player.stolenCards.length}枚</div>
+        `;
+        playerArea.appendChild(div);
+    });
+}
+
+function updateResult(message, isEnd = false) {
+    resultArea.style.color = isEnd ? '#1d3557' : (message.includes('ペナルティ') ? '#e63946' : '#1d3557');
+    resultArea.innerHTML = message;
+}
+
+// ----------------------------------------------
+// ゲームロジック
+// ----------------------------------------------
+
+function getCardTypeName(type) {
+    switch (type) {
+        case CARD_TYPES.BOZU: return '坊主札';
+        case CARD_TYPES.NYOBO: return '女房札';
+        case CARD_TYPES.KASEN: return '歌仙札';
+        default: return '不明';
+    }
+}
+
+function handleCardClick() {
+    if (!isGameActive || isAnimating || currentPlayerIndex !== 0) {
+        // ゲームが非アクティブ、アニメーション中、またはCPUのターンなら何もしない
+        if (currentPlayerIndex !== 0 && isGameActive) {
+             updateResult("今はコンピューターのターンです。");
+        }
+        return;
+    }
+    isAnimating = true;
+    
+    // カードをめくるアニメーション
+    deckCard.style.transform = 'rotateY(180deg)';
+
+    setTimeout(() => {
+        deckCard.style.transform = 'rotateY(0deg)';
+        
+        if (deck.length === 0) {
+            isAnimating = false;
+            endGame();
+            return;
+        }
+        const cardType = deck.pop();
+        
+        processCard(cardType);
+        
+        isAnimating = false;
+        
+        // 札が残っているかチェックし、次のターンへ
+        if (deck.length > 0) {
+            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            renderPlayers();
+            deckCountDisplay.textContent = deck.length; // 残り枚数更新
+            deckCard.textContent = `札 ${deck.length}枚`;
+
+            if (currentPlayerIndex !== 0) {
+                // CPUターン
+                setTimeout(cpuTurn, 1500); // 1.5秒後にCPUを動作させる
+            } else {
+                 updateResult(`${players[currentPlayerIndex].name}の番です。札をめくってね！`);
+            }
+        } else {
+            endGame();
+        }
+    }, 500); // 0.5秒後に処理
+}
+
+function processCard(cardType) {
+    const player = players[currentPlayerIndex];
+    let message = `${player.name}が「${getCardTypeName(cardType)}」を引きました。`;
+
+    // 一時的に札の表面を表示
+    deckCard.classList.remove('card-back');
+    deckCard.textContent = getCardTypeName(cardType);
+    
+    // 処理ロジック
+    switch (cardType) {
+        case CARD_TYPES.BOZU:
+            // 坊主札: 手持ちの札をすべて失う
+            message += `坊主札のペナルティ！手持ちの札（${player.score}枚）は場に置かれます。`;
+            if (player.score > 0) {
+                // 失った札を、現在のプレイヤーのstolenCardsに移動
+                player.stolenCards.push(...Array(player.score).fill(CARD_TYPES.KASEN)); 
+                player.score = 0;
+            }
+            break;
+
+        case CARD_TYPES.NYOBO:
+            // 女房札: 失った札（stolenCards）を取り返す
+            if (player.stolenCards.length > 0) {
+                const count = player.stolenCards.length;
+                player.score += count;
+                player.stolenCards = [];
+                message += `女房札のボーナス！失った札（${count}枚）を取り返しました！`;
+            } else {
+                 message += `女房札ですが、場に失われた札はありませんでした。`;
+            }
+            player.score++; // 女房札自体は獲得
+            break;
+
+        case CARD_TYPES.KASEN:
+            // 歌仙札: 獲得
+            player.score++;
+            message += `札を1枚獲得しました。`;
+            break;
+    }
+
+    updateResult(message);
+    renderPlayers();
+    
+    // 札を裏に戻す
+    setTimeout(() => {
+        deckCard.classList.add('card-back');
+        deckCard.textContent = `札 ${deck.length}枚`;
+    }, 1000); // 1秒後に裏に戻す
+}
+
+function cpuTurn() {
+    if (!isGameActive) return;
+    
+    // CPUもアニメーションを介してめくる
+    deckCard.style.transform = 'rotateY(180deg)';
+    isAnimating = true;
+
+    setTimeout(() => {
+        deckCard.style.transform = 'rotateY(0deg)';
+        
+        if (deck.length === 0) {
+            isAnimating = false;
+            endGame();
+            return;
+        }
+
+        const cardType = deck.pop();
+        
+        processCard(cardType);
+        
+        isAnimating = false;
+
+        if (deck.length > 0) {
+            currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+            renderPlayers();
+            deckCountDisplay.textContent = deck.length; // 残り枚数更新
+            deckCard.textContent = `札 ${deck.length}枚`;
+
+            if (currentPlayerIndex !== 0) {
+                // 次のCPUターン
+                setTimeout(cpuTurn, 1500);
+            } else {
+                 updateResult(`${players[currentPlayerIndex].name}の番です。札をめくってね！`);
+            }
+        } else {
+            endGame();
+        }
+    }, 1000); // CPUは少しゆっくり
+}
+
+function endGame() {
+    isGameActive = false;
+    deckCard.style.display = 'none';
+    deckCountDisplay.style.display = 'none';
+
+    // 最終スコアの計算と順位付け
+    const finalScores = players.map(p => ({
+        name: p.name,
+        score: p.score // 獲得札数
+    }));
+
+    finalScores.sort((a, b) => b.score - a.score); // 降順にソート
+
+    let endMessage = "ゲーム終了！最終結果：<br>";
+    finalScores.forEach((p, index) => {
+        endMessage += `${index + 1}位: ${p.name} - ${p.score}枚<br>`;
+    });
+
+    if (finalScores[0].name === 'あなた') {
+        endMessage += "<br>おめでとう！あなたが優勝です！";
+    } else {
+        endMessage += "<br>惜しい！また挑戦してね！";
+    }
+
+    updateResult(endMessage, true);
+}
+
+// ----------------------------------------------
+// 初期ロード
+// ----------------------------------------------
+// setupGame()はボタンクリックで呼ばれます。
+
+</script>
+
+</body>
+</html>
