@@ -113,12 +113,11 @@ const COLS = 7;
 const EMPTY = 0;
 const PLAYER = 1; // プレイヤーのID (黒: )
 const CPU = 2;    // CPUのID (青: )
-// ... (以下、AIロジックとゲームロジックは前回と同じ高難度設定を維持) ...
 
 let board = [];        
 let currentPlayer = PLAYER;
 let isGameOver = false;
-let isAnimating = false;
+let isAnimating = false; // アニメーションフラグは基本的にCPUの思考中/ドロップ中のみ使用
 
 const gameBoardDiv = document.getElementById('gameBoard');
 const messageArea = document.getElementById('messageArea');
@@ -131,6 +130,7 @@ function initGame() {
     board = Array(ROWS).fill(0).map(() => Array(COLS).fill(EMPTY));
     currentPlayer = PLAYER;
     isGameOver = false;
+    isAnimating = false; // 初期化時もリセット
     
     renderBoard();
     updateMessage("あなたの番です ()");
@@ -139,8 +139,8 @@ function initGame() {
 
 function renderBoard() {
     gameBoardDiv.innerHTML = '';
-    // CPUのターン中はクリックできないようにする
-    gameBoardDiv.style.pointerEvents = isGameOver || currentPlayer === CPU ? 'none' : 'auto';
+    // CPUの思考中/ドロップ中、またはゲームオーバーの時のみ、ボードをクリック不可にする
+    gameBoardDiv.style.pointerEvents = (isGameOver || isAnimating || currentPlayer === CPU) ? 'none' : 'auto';
 
     for (let r = 0; r < ROWS; r++) {
         for (let c = 0; c < COLS; c++) {
@@ -165,7 +165,6 @@ function renderBoard() {
 
 function updateMessage(message, isEnd = false) {
     messageArea.textContent = message;
-    // CPUの色（青）に合わせてメッセージの色も変更
     messageArea.style.color = isEnd ? '#a8dadc' : (currentPlayer === PLAYER ? '#e63946' : '#4895ef'); 
 }
 
@@ -183,6 +182,7 @@ function getNextOpenRow(col) {
 }
 
 function handleBoardClick(event) {
+    // isAnimatingのチェックは不要だが、念のため残す
     if (isGameOver || currentPlayer !== PLAYER || isAnimating) return;
     
     let targetCell = event.target.closest('.cell');
@@ -199,17 +199,18 @@ function handleBoardClick(event) {
 }
 
 function dropChip(row, col, player) {
-    isAnimating = true;
+    isAnimating = true; // ドロップ処理中はアニメーション中フラグを立てる
     board[row][col] = player;
 
-    renderBoard(); 
+    renderBoard(); // 駒をドロップした状態を即座に描画
 
-    // 勝敗判定
+    // 勝利判定
     if (checkWin(row, col, player)) {
         isGameOver = true;
         updateMessage(player === PLAYER ? "あなたの勝ちです！ ()" : "コンピューターの勝ちです！ ()", true);
         document.getElementById('resetButton').textContent = 'もう一度プレイ';
         isAnimating = false;
+        renderBoard(); // 最終状態を確定
         return;
     }
 
@@ -219,6 +220,7 @@ function dropChip(row, col, player) {
         updateMessage("引き分けです！", true);
         document.getElementById('resetButton').textContent = 'もう一度プレイ';
         isAnimating = false;
+        renderBoard(); // 最終状態を確定
         return;
     }
 
@@ -226,14 +228,16 @@ function dropChip(row, col, player) {
     currentPlayer = (player === PLAYER) ? CPU : PLAYER;
     updateMessage(currentPlayer === PLAYER ? "あなたの番です ()" : "コンピューターの番です ()");
 
-    isAnimating = false;
+    isAnimating = false; // ドロップ処理が完了したのでフラグを戻す
     
     // CPUのターンであれば自動で手を打つ
     if (currentPlayer === CPU && !isGameOver) {
-        gameBoardDiv.style.pointerEvents = 'none';
+        // CPU思考中はボードクリックを無効化
+        gameBoardDiv.style.pointerEvents = 'none'; 
         setTimeout(cpuMove, 1000); 
     } else {
-        gameBoardDiv.style.pointerEvents = 'auto';
+        // プレイヤーのターンに戻ったらボードクリックを有効化
+        gameBoardDiv.style.pointerEvents = 'auto'; 
     }
 }
 
@@ -271,7 +275,7 @@ function checkDirection(r, c, player, dr, dc) {
 }
 
 // ----------------------------------------------
-// CPU (難易度アップAI) ロジック - 前回のロジックをそのまま使用
+// CPU (難易度アップAI) ロジック
 // ----------------------------------------------
 
 function calculateScore(r, c, testBoard, player) {
@@ -404,21 +408,29 @@ function cpuMove() {
         }
     }
     
+    // CPUが動く時もdropChipを使う
     if (bestCol !== -1) {
         let r = getNextOpenRow(bestCol);
         if (r !== -1) {
+            // CPUの手をドロップ
             dropChip(r, bestCol, CPU);
         }
     } else if (availableCols.length > 0) {
         const randomCol = availableCols[Math.floor(Math.random() * availableCols.length)];
         let r = getNextOpenRow(randomCol);
         if (r !== -1) {
+            // ランダムな手をドロップ
             dropChip(r, randomCol, CPU);
         }
     }
+    // dropChipの内部でcurrentPlayerがPLAYERに戻り、ボードクリックが再有効化されます。
 }
 
 
+// ----------------------------------------------
+// ゲーム開始
+// ----------------------------------------------
+initGame();
 // ----------------------------------------------
 // ゲーム開始
 // ----------------------------------------------
