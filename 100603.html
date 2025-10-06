@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>カスタムブロック崩し</title>
+<style>
+  body {
+    background: #f0f8ff; 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    font-family: 'Comic Sans MS', cursive, sans-serif; 
+    color: #333;
+  }
+  canvas {
+    /* JavaScriptで背景色を設定 */
+    background-color: #000000;
+    display: block;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+    border-radius: 15px;
+    /* 背景色変更を滑らかに */
+    transition: background-color 1s ease-in-out; 
+  }
+</style>
+</head>
+<body>
+
+<canvas id="myCanvas" width="480" height="320"></canvas>
+
+<script>
+// JavaScript: ゲームロジック
+
+// 1. セットアップ
+const canvas = document.getElementById("myCanvas");
+const ctx = canvas.getContext("2d");
+
+// レベル管理
+let level = 1;
+const maxLevel = 5;
+
+// レベルごとのテーマカラー
+const levelThemes = {
+  1: {
+    background: '#80DEEA', // 薄いミントブルー
+    ball: '#006064', // 濃いシアン
+    paddle: '#1d3557', // 濃い青
+    brick: '#FFCCBC' // 淡いオレンジ
+  },
+  2: {
+    background: '#FFAB91', // 淡いオレンジ
+    ball: '#D84315', // 濃いオレンジ
+    paddle: '#C2185B', // 濃いピンク
+    brick: '#B3E5FC' // 薄いブルー
+  },
+  3: {
+    background: '#E6EE9C', // 淡いグリーン
+    ball: '#827717', // 濃いオリーブ
+    paddle: '#006064', // 濃いシアン
+    brick: '#FFCDD2' // 薄いレッド
+  },
+  4: {
+    background: '#B39DDB', // 淡いラベンダー
+    ball: '#4527A0', // 濃い紫
+    paddle: '#00838F', // 濃い水色
+    brick: '#FFF9C4' // 薄い黄色
+  },
+  5: {
+    background: '#FFE0B2', // 淡いピーチ
+    ball: '#E65100', // 濃いオレンジ
+    paddle: '#4A148C', // 濃い紫
+    brick: '#F48FB1' // 濃いピンク
+  }
+};
+
+
+// ボール
+let x;
+let y;
+let dx; 
+let dy; 
+const ballRadius = 10;
+const BASE_SPEED = 3; // 基本速度（少し速め）
+
+// パドル（台）
+const paddleHeight = 10;
+const paddleWidth = 75;
+let paddleX;
+let rightPressed = false;
+let leftPressed = false;
+
+// ブロック
+const BRICK_FIXED_WIDTH = 50; // ブロックの幅を固定
+const BRICK_FIXED_HEIGHT = 15; // ブロックの高さを固定
+const brickMaxRows = 5;
+const brickMaxCols = 8;
+const bricks = []; // 2次元配列として使用
+
+// スコア
+let score = 0;
+
+// ----------------------------------------------
+// 初期化・リセット関数
+// ----------------------------------------------
+
+// ブロックの配置をランダムに初期化
+function initializeBricks() {
+  bricks.length = 0; // リセット
+
+  // ランダムな配置を生成
+  for (let c = 0; c < brickMaxCols; c++) {
+    bricks[c] = [];
+    for (let r = 0; r < brickMaxRows; r++) {
+      // 50%の確率でブロックを配置 (ランダムな配置)
+      if (Math.random() > 0.5) { 
+        // ランダムなオフセットとパディングを追加して、配置を不規則にする
+        const brickPaddingX = Math.random() * 15 + 5; // 5〜20
+        const brickPaddingY = Math.random() * 10 + 5; // 5〜15
+        const brickOffsetX = 10;
+        const brickOffsetY = 30;
+
+        const brickX = brickOffsetX + c * (BRICK_FIXED_WIDTH + brickPaddingX);
+        const brickY = brickOffsetY + r * (BRICK_FIXED_HEIGHT + brickPaddingY);
+        
+        // キャンバスの範囲外なら配置しない
+        if (brickX + BRICK_FIXED_WIDTH < canvas.width && brickY + BRICK_FIXED_HEIGHT < canvas.height / 2) {
+            bricks[c][r] = { x: brickX, y: brickY, status: 1, width: BRICK_FIXED_WIDTH, height: BRICK_FIXED_HEIGHT };
+        } else {
+            bricks[c][r] = { status: 0 }; // 範囲外のブロックは壊れた状態に
+        }
+
+      } else {
+        bricks[c][r] = { status: 0 }; // 配置しない
+      }
+    }
+  }
+}
+
+// ボールとパドルの位置、スピードをリセット（レベルアップ時にも使用）
+function resetBallAndPaddle() {
+  x = canvas.width / 2;
+  y = canvas.height - 30;
+  
+  // レベルとランダム性に応じたスピードを計算
+  // サイトを開くたびのランダム性 (±1の範囲でランダムな初期速度)
+  const randomFactor = Math.random() * 2 - 1; 
+  const baseSpeed = BASE_SPEED + randomFactor; 
+  
+  // レベルが上がるごとに速くなる (レベル1: 1.0倍, レベル5: 3.0倍)
+  const speedMultiplier = 1 + (level - 1) * 0.5; 
+  
+  // 初期X方向もランダムに
+  let initialDx = baseSpeed * speedMultiplier;
+  if (Math.random() < 0.5) initialDx *= -1;
+
+  dx = initialDx;
+  dy = -baseSpeed * speedMultiplier; 
+
+  paddleX = (canvas.width - paddleWidth) / 2;
+}
+
+// 初回ゲーム開始時の設定
+function initGame() {
+    applyTheme(level);
+    initializeBricks();
+    resetBallAndPaddle();
+}
+
+// テーマを適用する関数
+function applyTheme(currentLevel) {
+  const theme = levelThemes[currentLevel];
+  // 画面の色をレベルに合わせて変更
+  canvas.style.backgroundColor = theme.background;
+}
+
+
+// ----------------------------------------------
+// イベントリスナー（キー操作）
+// ----------------------------------------------
+document.addEventListener("keydown", keyDownHandler, false);
+document.addEventListener("keyup", keyUpHandler, false);
+
+function keyDownHandler(e) {
+  if (e.key === "Right" || e.key === "ArrowRight") {
+    rightPressed = true;
+  } else if (e.key === "Left" || e.key === "ArrowLeft") {
+    leftPressed = true;
+  }
+}
+
+function keyUpHandler(e) {
+  if (e.key === "Right" || e.key === "ArrowRight") {
+    rightPressed = false;
+  } else if (e.key === "Left" || e.key === "ArrowLeft") {
+    leftPressed = false;
+  }
+}
+
+// ----------------------------------------------
+// 描画関数
+// ----------------------------------------------
+
+function drawBall() {
+  // ボールを丸に戻す
+  ctx.beginPath();
+  ctx.arc(x, y, ballRadius, 0, Math.PI * 2);
+  ctx.fillStyle = levelThemes[level].ball;
+  ctx.shadowColor = levelThemes[level].ball;
+  ctx.shadowBlur = 5; // 影をつけて可愛らしさをアップ
+  ctx.fill();
+  ctx.closePath();
+  ctx.shadowBlur = 0; // 他の描画に影響が出ないようリセット
+}
+
+function drawPaddle() {
+  ctx.beginPath();
+  ctx.rect(paddleX, canvas.height - paddleHeight, paddleWidth, paddleHeight);
+  ctx.fillStyle = levelThemes[level].paddle;
+  ctx.fill();
+  ctx.closePath();
+}
+
+function drawBricks() {
+  for (let c = 0; c < brickMaxCols; c++) {
+    for (let r = 0; r < brickMaxRows; r++) {
+      const b = bricks[c][r];
+      if (b.status === 1) {
+        ctx.beginPath();
+        // ブロックごとにランダムなサイズを適用
+        ctx.rect(b.x, b.y, b.width, b.height); 
+        ctx.fillStyle = levelThemes[level].brick; 
+        ctx.fill();
+        ctx.closePath();
+      }
+    }
+  }
+}
+
+function drawScore() {
+  ctx.font = "bold 20px 'Comic Sans MS', cursive"; 
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("Score: " + score, 8, 25);
+  ctx.fillText("Level: " + level, canvas.width - 100, 25); 
+}
+
+// ----------------------------------------------
+// ロジック関数
+// ----------------------------------------------
+
+// ステージクリア時の処理
+function levelUp() {
+    if (level < maxLevel) {
+        level++;
+        alert(`きらきら！ステージクリア！レベル ${level} へアップ！`);
+
+        applyTheme(level); // 画面の色を変更
+        initializeBricks(); // ブロックをランダムに再生成
+        resetBallAndPaddle(); // ボールとパドルの位置とスピードをリセット
+
+    } else {
+        alert("全ステージきらきらクリア！おめでとうございます！");
+        document.location.reload(); 
+    }
+}
+
+// 衝突判定
+function collisionDetection() {
+  let remainingBricks = 0;
+  
+  for (let c = 0; c < brickMaxCols; c++) {
+    for (let r = 0; r < brickMaxRows; r++) {
+      const b = bricks[c][r];
+      if (b.status === 1) {
+        remainingBricks++; 
+
+        // ボールがブロックの内側にあるかチェック
+        if (
+          x > b.x && x < b.x + b.width &&
+          y > b.y && y < b.y + b.height
+        ) {
+          // **衝突時の動きをランダムではなく、操作に応じて**
+          
+          // ボールのY方向を反転
+          dy = -dy; 
+          
+          // ブロックを壊す
+          b.status = 0; 
+          score++; 
+          remainingBricks--; 
+        }
+      }
+    }
+  }
+  
+  if (remainingBricks === 0) {
+    levelUp();
+  }
+}
+
+
+// ----------------------------------------------
+// メインの描画ループ
+// ----------------------------------------------
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height); 
+
+  drawBricks();
+  drawBall();
+  drawPaddle();
+  drawScore();
+  collisionDetection();
+
+  // ボールの動きと壁の反射
+  if (x + dx > canvas.width - ballRadius || x + dx < ballRadius) {
+    dx = -dx; // 左右の壁で反射
+  }
+  if (y + dy < ballRadius) {
+    dy = -dy; // 上の壁で反射
+  } else if (y + dy > canvas.height - ballRadius) {
+    // ボールが下に落ちた場合
+
+    // パドルに当たったかチェック
+    if (x > paddleX && x < paddleX + paddleWidth) {
+      
+      // 【重要】パドルに当たる位置でボールの動く向きを変えるロジック
+      // パドルの中央(0)から端(±1)までの相対的なヒットポイントを計算
+      const centerOfPaddle = paddleX + paddleWidth / 2;
+      const hitPoint = (x - centerOfPaddle) / (paddleWidth / 2); 
+      
+      // X方向の速度 (dx) を、当たる位置に応じて大きく変化させる
+      // 当たる位置が端（hitPointが±1に近い）ほど、dxの絶対値が大きくなる
+      dx = hitPoint * Math.abs(dy); // dyの絶対値を基準に使うことで、速度を維持しつつ角度だけ変える
+      dy = -dy; // Y方向を反転
+
+    } else {
+      alert("ざんねん... ゲームオーバー！もう一回やってみよう！");
+      document.location.reload(); 
+    }
+  }
+
+  // パドルの動き
+  if (rightPressed && paddleX < canvas.width - paddleWidth) {
+    paddleX += 7;
+  } else if (leftPressed && paddleX > 0) {
+    paddleX -= 7;
+  }
+
+  // ボールの位置を更新
+  x += dx;
+  y += dy;
+
+  requestAnimationFrame(draw);
+}
+
+// ゲーム開始
+initGame();
+draw();
+</script>
+
+</body>
+</html>
