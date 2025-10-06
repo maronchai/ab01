@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>四目並べ (難易度アップ版)</title>
+<style>
+  body {
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #333333; /* 背景色をダークグレーに */
+    padding: 20px;
+  }
+  
+  h2 {
+    color: #f1faee; /* 文字色を白に */
+  }
+
+  /* ゲームボードのスタイル */
+  #gameBoard {
+    display: grid;
+    grid-template-columns: repeat(7, 60px); /* 7列 */
+    grid-template-rows: repeat(6, 60px);    /* 6行 */
+    border: 5px solid #000000;
+    background-color: #1d3557; /* ボードの枠色を紺色に */
+    border-radius: 10px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+  }
+
+  .cell {
+    width: 60px;
+    height: 60px;
+    background-color: #f1faee; /* マス目の色（空）を白に */
+    border: 1px solid #1d3557; 
+    border-radius: 50%; /* 丸い穴のように見せる */
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* 駒のスタイル */
+  .chip {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    transform: scale(0); 
+    transition: transform 0.3s ease-out;
+    box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.4);
+  }
+  
+  /* プレイヤー1: 黒 () */
+  .player-chip {
+    background-color: #000000; 
+    transform: scale(1);
+  }
+  
+  /* CPU: 青 () */
+  .cpu-chip {
+    background-color: #4895ef; 
+    border: 1px solid #1d3557; 
+    transform: scale(1);
+  }
+
+  /* 結果表示エリア */
+  #messageArea {
+    margin-top: 20px;
+    font-size: 24px;
+    font-weight: bold;
+    color: #e63946;
+    min-height: 40px;
+  }
+  
+  /* リセットボタン */
+  #resetButton {
+    padding: 10px 20px;
+    font-size: 18px;
+    margin-top: 15px;
+    cursor: pointer;
+    background-color: #a8dadc;
+    color: #1d3557;
+    border: none;
+    border-radius: 5px;
+    transition: background-color 0.2s;
+  }
+  #resetButton:hover {
+    background-color: #457b9d;
+    color: #ffffff;
+  }
+</style>
+</head>
+<body>
+
+  <h2>四目並べ (難易度: 上)</h2>
+
+  <div id="gameBoard" onclick="handleBoardClick(event)">
+    </div>
+
+  <div id="messageArea">あなたの番です ()</div>
+
+  <button id="resetButton" onclick="initGame()">リセット</button>
+
+<script>
+// JavaScript: ゲームロジック
+
+// ----------------------------------------------
+// 定数と変数
+// ----------------------------------------------
+
+const ROWS = 6;
+const COLS = 7;
+const EMPTY = 0;
+const PLAYER = 1; // プレイヤーのID (黒: )
+const CPU = 2;    // CPUのID (青: )
+
+let board = [];        
+let currentPlayer = PLAYER;
+let isGameOver = false;
+let isAnimating = false;
+
+const gameBoardDiv = document.getElementById('gameBoard');
+const messageArea = document.getElementById('messageArea');
+
+// ----------------------------------------------
+// 初期化・描画
+// ----------------------------------------------
+
+function initGame() {
+    board = Array(ROWS).fill(0).map(() => Array(COLS).fill(EMPTY));
+    currentPlayer = PLAYER;
+    isGameOver = false;
+    isAnimating = false;
+    
+    renderBoard();
+    updateMessage("あなたの番です ()");
+    document.getElementById('resetButton').textContent = 'リセット';
+}
+
+function renderBoard() {
+    gameBoardDiv.innerHTML = '';
+    // CPUの思考中/ドロップ中、またはゲームオーバーの時のみ、ボードをクリック不可にする
+    gameBoardDiv.style.pointerEvents = (isGameOver || isAnimating || currentPlayer === CPU) ? 'none' : 'auto';
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'cell';
+            cellDiv.dataset.col = c; 
+
+            const chipDiv = document.createElement('div');
+            chipDiv.className = 'chip';
+
+            if (board[r][c] === PLAYER) {
+                chipDiv.classList.add('player-chip');
+            } else if (board[r][c] === CPU) {
+                chipDiv.classList.add('cpu-chip');
+            }
+
+            cellDiv.appendChild(chipDiv);
+            gameBoardDiv.appendChild(cellDiv);
+        }
+    }
+}
+
+function updateMessage(message, isEnd = false) {
+    messageArea.textContent = message;
+    messageArea.style.color = isEnd ? '#a8dadc' : (currentPlayer === PLAYER ? '#e63946' : '#4895ef'); 
+}
+
+// ----------------------------------------------
+// ゲームロジック
+// ----------------------------------------------
+
+function getNextOpenRow(col) {
+    for (let r = ROWS - 1; r >= 0; r--) {
+        if (board[r][col] === EMPTY) {
+            return r;
+        }
+    }
+    return -1; 
+}
+
+function handleBoardClick(event) {
+    if (isGameOver || currentPlayer !== PLAYER || isAnimating) return;
+    
+    let targetCell = event.target.closest('.cell');
+    if (!targetCell) return;
+    
+    const col = parseInt(targetCell.dataset.col);
+    const row = getNextOpenRow(col);
+
+    if (row !== -1) {
+        dropChip(row, col, PLAYER);
+    } else {
+        updateMessage("その列はいっぱいです。別の列を選んでください。");
+    }
+}
+
+function dropChip(row, col, player) {
+    isAnimating = true;
+    board[row][col] = player;
+
+    renderBoard(); 
+
+    // 勝利判定
+    if (checkWin(row, col, player)) {
+        isGameOver = true;
+        updateMessage(player === PLAYER ? "あなたの勝ちです！ ()" : "コンピューターの勝ちです！ ()", true);
+        document.getElementById('resetButton').textContent = 'もう一度プレイ';
+        isAnimating = false;
+        renderBoard(); 
+        return;
+    }
+
+    // 引き分け判定
+    if (board.every(row => row.every(cell => cell !== EMPTY))) {
+        isGameOver = true;
+        updateMessage("引き分けです！", true);
+        document.getElementById('resetButton').textContent = 'もう一度プレイ';
+        isAnimating = false;
+        renderBoard(); 
+        return;
+    }
+
+    // ターン切り替え
+    currentPlayer = (player === PLAYER) ? CPU : PLAYER;
+    updateMessage(currentPlayer === PLAYER ? "あなたの番です ()" : "コンピューターの番です ()");
+
+    isAnimating = false; 
+    
+    // CPUのターンであれば自動で手を打つ
+    if (currentPlayer === CPU && !isGameOver) {
+        gameBoardDiv.style.pointerEvents = 'none'; 
+        setTimeout(cpuMove, 1000); 
+    } else {
+        gameBoardDiv.style.pointerEvents = 'auto'; 
+    }
+}
+
+// ----------------------------------------------
+// 勝敗判定 (四目並びチェック)
+// ----------------------------------------------
+
+function checkWin(r, c, player) {
+    return checkDirection(r, c, player, 1, 0) || 
+           checkDirection(r, c, player, 0, 1) || 
+           checkDirection(r, c, player, 1, 1) || 
+           checkDirection(r, c, player, 1, -1);
+}
+
+function checkDirection(r, c, player, dr, dc) {
+    let count = 0;
+    
+    let tempR = r;
+    let tempC = c;
+    while (tempR >= 0 && tempR < ROWS && tempC >= 0 && tempC < COLS && board[tempR][tempC] === player) {
+        count++;
+        tempR += dr;
+        tempC += dc;
+    }
+
+    tempR = r - dr;
+    tempC = c - dc;
+    while (tempR >= 0 && tempR < ROWS && tempC >= 0 && tempC < COLS && board[tempR][tempC] === player) {
+        count++;
+        tempR -= dr;
+        tempC -= dc;
+    }
+
+    return count >= 4;
+}
+
+// ----------------------------------------------
+// CPU (難易度アップAI) ロジック
+// ----------------------------------------------
+
+function calculateScore(r, c, testBoard, player) {
+    let score = 0;
+    const opp = (player === PLAYER) ? CPU : PLAYER;
+
+    if (checkWin(r, c, player, testBoard)) {
+        score += 100000;
+    }
+
+    const threats = countThreats(testBoard, player);
+    score += threats * 1000;
+
+    if (c === 3) {
+        score += 10;
+    }
+
+    const oppThreats = countThreats(testBoard, opp);
+    score -= oppThreats * 500;
+    
+    return score;
+}
+
+function countThreats(testBoard, player) {
+    let threatCount = 0;
+    
+    const directions = [
+        [0, 1], [1, 0], [1, 1], [1, -1]
+    ];
+
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            if (testBoard[r][c] === player) {
+                for (const [dr, dc] of directions) {
+                    
+                    for (let i = 0; i < 4; i++) {
+                        let window = [];
+                        let isValidWindow = true;
+                        
+                        for (let j = 0; j < 4; j++) {
+                            const tr = r + (j - i) * dr;
+                            const tc = c + (j - i) * dc;
+                            
+                            if (tr >= 0 && tr < ROWS && tc >= 0 && tc < COLS) {
+                                window.push(testBoard[tr][tc]);
+                            } else {
+                                isValidWindow = false;
+                                break;
+                            }
+                        }
+
+                        if (isValidWindow) {
+                            const playerCount = window.filter(id => id === player).length;
+                            const emptyCount = window.filter(id => id === EMPTY).length;
+                            
+                            if (playerCount === 3 && emptyCount === 1) {
+                                threatCount++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return threatCount;
+}
+
+function checkWin(r, c, player, checkBoard) {
+    const checkDirection_local = (r, c, player, dr, dc) => {
+        let count = 0;
+        let tempR = r;
+        let tempC = c;
+        while (tempR >= 0 && tempR < ROWS && tempC >= 0 && tempC < COLS && checkBoard[tempR][tempC] === player) {
+            count++;
+            tempR += dr;
+            tempC += dc;
+        }
+
+        tempR = r - dr;
+        tempC = c - dc;
+        while (tempR >= 0 && tempR < ROWS && tempC >= 0 && tempC < COLS && checkBoard[tempR][tempC] === player) {
+            count++;
+            tempR -= dr;
+            tempC -= dc;
+        }
+        return count >= 4;
+    };
+    
+    return checkDirection_local(r, c, player, 1, 0) || 
+           checkDirection_local(r, c, player, 0, 1) || 
+           checkDirection_local(r, c, player, 1, 1) || 
+           checkDirection_local(r, c, player, 1, -1);
+}
+
+function cpuMove() {
+    if (isGameOver || currentPlayer !== CPU) return;
+
+    let bestCol = -1;
+    let maxScore = -Infinity;
+    let availableCols = [];
+
+    for (let c = 0; c < COLS; c++) {
+        let r = getNextOpenRow(c);
+        if (r !== -1) {
+            availableCols.push(c);
+            
+            let tempBoard = board.map(arr => [...arr]);
+            tempBoard[r][c] = CPU;
+
+            let score = calculateScore(r, c, tempBoard, CPU);
+
+            const opp = PLAYER;
+            for(let oc = 0; oc < COLS; oc++) {
+                let or = getNextOpenRow(oc);
+                if (or !== -1) {
+                    tempBoard[or][oc] = opp;
+                    if (checkWin(or, oc, opp, tempBoard)) {
+                        score = score - 10000; 
+                    }
+                    tempBoard[or][oc] = EMPTY; 
+                }
+            }
+
+            if (score > maxScore) {
+                maxScore = score;
+                bestCol = c;
+            } else if (score === maxScore && Math.random() < 0.5) {
+                bestCol = c;
+            }
+        }
+    }
+    
+    if (bestCol !== -1) {
+        let r = getNextOpenRow(bestCol);
+        if (r !== -1) {
+            dropChip(r, bestCol, CPU);
+        }
+    } else if (availableCols.length > 0) {
+        const randomCol = availableCols[Math.floor(Math.random() * availableCols.length)];
+        let r = getNextOpenRow(randomCol);
+        if (r !== -1) {
+            dropChip(r, randomCol, CPU);
+        }
+    }
+}
+
+
+// ----------------------------------------------
+// ゲーム開始
+// ----------------------------------------------
+initGame();
+</script>
+
+</body>
+</html>
