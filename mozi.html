@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>あたまおしりゲーム</title>
+<style>
+  body {
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #f4f4f9;
+    padding: 20px;
+    color: #333;
+  }
+  
+  h2 {
+    color: #1d3557;
+    margin-bottom: 10px;
+  }
+
+  /* ゲーム情報エリア */
+  #infoArea {
+    width: 80%;
+    max-width: 500px;
+    background-color: #fff;
+    padding: 15px 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  
+  #turnIndicator {
+    font-size: 22px;
+    font-weight: bold;
+    color: #e63946;
+    margin-bottom: 10px;
+  }
+
+  #currentRule {
+    font-size: 36px;
+    font-weight: 900;
+    color: #4895ef;
+    margin: 15px 0;
+  }
+  
+  /* スコアボード */
+  #scoreBoard {
+    display: flex;
+    justify-content: space-around;
+    width: 100%;
+    margin-bottom: 20px;
+    font-size: 18px;
+    font-weight: bold;
+  }
+
+  .score-item {
+    padding: 5px 15px;
+    border-radius: 5px;
+    background-color: #f1faee;
+    border: 1px solid #a8dadc;
+  }
+
+  /* 入力エリア */
+  #inputArea {
+    width: 80%;
+    max-width: 500px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+  }
+  
+  #wordInput {
+    padding: 10px;
+    font-size: 16px;
+    border: 2px solid #a8dadc;
+    border-radius: 5px;
+    flex-grow: 1;
+  }
+
+  #submitButton {
+    padding: 10px 20px;
+    font-size: 16px;
+    background-color: #1d3557;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  #submitButton:hover:not(:disabled) {
+    background-color: #457b9d;
+  }
+  #submitButton:disabled {
+    background-color: #ccc;
+    cursor: default;
+  }
+
+  /* 履歴エリア */
+  #historyArea {
+    width: 80%;
+    max-width: 500px;
+    margin-top: 25px;
+    text-align: left;
+  }
+
+  #historyList {
+    list-style: none;
+    padding: 0;
+  }
+
+  #historyList li {
+    padding: 5px 0;
+    border-bottom: 1px dotted #ccc;
+    font-size: 16px;
+  }
+  
+  .player-entry { color: #e63946; } /* プレイヤーの履歴 */
+  .cpu-entry { color: #4895ef; } /* CPUの履歴 */
+  
+  .reset-button {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 16px;
+    background-color: #a8dadc;
+    color: #1d3557;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+  <h2>あたまおしりゲーム</h2>
+
+  <div id="infoArea">
+    <div id="turnIndicator">あなたの番です</div>
+    <div id="currentRule">？ → ？</div>
+  </div>
+  
+  <div id="scoreBoard">
+    <div class="score-item">プレイヤー点数: <span id="playerScore">0</span></div>
+    <div class="score-item">CPU点数: <span id="cpuScore">0</span></div>
+  </div>
+
+  <div id="inputArea">
+    <input type="text" id="wordInput" placeholder="言葉を入力 (ひらがな/カタカナ)">
+    <button id="submitButton" onclick="submitWord()">決定</button>
+  </div>
+  
+  <div id="historyArea">
+    <h3>履歴</h3>
+    <ul id="historyList">
+      </ul>
+  </div>
+  
+  <button class="reset-button" onclick="initGame()">最初からやり直す</button>
+
+<script>
+// JavaScript: ゲームロジック
+
+// ----------------------------------------------
+// 定数と変数
+// ----------------------------------------------
+
+const HIRAGANA = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん';
+const VOWELS = 'あいうえお';
+const GAME_ROUNDS = 5; // 合計ラウンド数
+const PLAYER_TURN = 1;
+const CPU_TURN = 2;
+
+let currentRule = { start: '', end: '' };
+let playerScore = 0;
+let cpuScore = 0;
+let usedWords = [];
+let currentRound = 0;
+let currentPlayer = PLAYER_TURN;
+let isGameOver = false;
+
+const turnIndicator = document.getElementById('turnIndicator');
+const currentRuleDiv = document.getElementById('currentRule');
+const playerScoreSpan = document.getElementById('playerScore');
+const cpuScoreSpan = document.getElementById('cpuScore');
+const wordInput = document.getElementById('wordInput');
+const submitButton = document.getElementById('submitButton');
+const historyList = document.getElementById('historyList');
+
+// CPUの簡易語彙リスト (ひらがな、3〜5文字)
+const CPU_WORDS = [
+    "あしあと", "いぬ", "えほん", "おにぎり", "かさ", "きつね", "くつ", "けむり", "こころ",
+    "さかな", "すいか", "せんせい", "たいよう", "ちず", "てんき", "ともだち", "とけい",
+    "なみだ", "ねこ", "はな", "ふね", "へいわ", "ほし", "まくら", "みず", "むかし",
+    "めだま", "もも", "ゆめ", "らくだ", "りんご", "れもん", "ろうそく", "わに", "わかめ"
+];
+
+
+// ----------------------------------------------
+// 初期化とゲーム開始
+// ----------------------------------------------
+
+function initGame() {
+    playerScore = 0;
+    cpuScore = 0;
+    usedWords = [];
+    currentRound = 0;
+    isGameOver = false;
+    historyList.innerHTML = '';
+    
+    updateScore();
+    startNewRound();
+    wordInput.disabled = false;
+    submitButton.disabled = false;
+}
+
+function startNewRound() {
+    if (currentRound >= GAME_ROUNDS) {
+        endGame();
+        return;
+    }
+    currentRound++;
+    
+    // ランダムなルール生成
+    const startChar = HIRAGANA[Math.floor(Math.random() * HIRAGANA.length)];
+    const endChar = VOWELS[Math.floor(Math.random() * VOWELS.length)]; // 終わりの文字は母音系に限定
+    currentRule = { start: startChar, end: endChar };
+    
+    currentRuleDiv.textContent = `${currentRule.start} → ${currentRule.end}`;
+    
+    // プレイヤーから開始
+    currentPlayer = PLAYER_TURN;
+    updateTurnIndicator();
+}
+
+function endGame() {
+    isGameOver = true;
+    wordInput.disabled = true;
+    submitButton.disabled = true;
+    
+    let resultMessage = '';
+    if (playerScore > cpuScore) {
+        resultMessage = `ゲーム終了！あなたの勝ちです！ (${playerScore}点 対 ${cpuScore}点)`;
+        turnIndicator.style.color = '#e63946';
+    } else if (cpuScore > playerScore) {
+        resultMessage = `ゲーム終了！CPUの勝ちです！ (${playerScore}点 対 ${cpuScore}点)`;
+        turnIndicator.style.color = '#4895ef';
+    } else {
+        resultMessage = `ゲーム終了！引き分けです！ (${playerScore}点 対 ${cpuScore}点)`;
+        turnIndicator.style.color = '#333';
+    }
+    
+    turnIndicator.textContent = resultMessage;
+}
+
+
+// ----------------------------------------------
+// プレイヤーの入力処理
+// ----------------------------------------------
+
+function submitWord() {
+    if (isGameOver || currentPlayer !== PLAYER_TURN) return;
+
+    const word = wordInput.value.trim().toLowerCase().replace(/[^ぁ-んァ-ン]/g, ''); // ひらがな・カタカナ以外を除去
+    wordInput.value = ''; // 入力欄をクリア
+
+    if (word.length < 2) {
+        alert('言葉は2文字以上で入力してください。');
+        return;
+    }
+
+    const validation = validateWord(word);
+    
+    if (validation.valid) {
+        processTurn(word, PLAYER_TURN);
+        
+        // CPUターンへ移行
+        if (!isGameOver) {
+            currentPlayer = CPU_TURN;
+            updateTurnIndicator();
+            submitButton.disabled = true;
+            wordInput.disabled = true;
+            setTimeout(cpuTurn, 2000); // 2秒後にCPUを動かす
+        }
+    } else {
+        alert(validation.message);
+    }
+}
+
+function validateWord(word) {
+    // 1. 文字チェック (ひらがな・カタカナであること)
+    if (!/^[ぁ-んァ-ン]+$/.test(word)) {
+        return { valid: false, message: 'ひらがなまたはカタカナで入力してください。' };
+    }
+    
+    // 2. ルールチェック (頭文字と最後の文字)
+    const firstChar = word.charAt(0);
+    const lastChar = word.charAt(word.length - 1);
+    
+    // カタカナをひらがなに変換してチェック
+    const startRule = currentRule.start;
+    const endRule = currentRule.end;
+    
+    const isStartValid = (firstChar === startRule) || (convertKatakanaToHiragana(firstChar) === startRule);
+    const isEndValid = (lastChar === endRule) || (convertKatakanaToHiragana(lastChar) === endRule);
+
+    if (!isStartValid) {
+        return { valid: false, message: `頭文字が「${currentRule.start}」ではありません。` };
+    }
+    if (!isEndValid) {
+        return { valid: false, message: `最後の文字が「${currentRule.end}」ではありません。` };
+    }
+
+    // 3. 使用済みチェック
+    if (usedWords.includes(word)) {
+        return { valid: false, message: 'その言葉は既に使用されています。' };
+    }
+
+    return { valid: true, message: 'OK' };
+}
+
+function convertKatakanaToHiragana(char) {
+    const katakanaCode = char.charCodeAt(0);
+    // カタカナの範囲内なら、ひらがなコードに変換
+    if (katakanaCode >= 0x30a1 && katakanaCode <= 0x30f6) {
+        return String.fromCharCode(katakanaCode - 0x60);
+    }
+    return char;
+}
+
+// ----------------------------------------------
+// CPUのターン処理
+// ----------------------------------------------
+
+function cpuTurn() {
+    if (isGameOver || currentPlayer !== CPU_TURN) return;
+    
+    updateTurnIndicator('CPUが考えています...');
+    
+    // CPUの語彙からルールに合う言葉を探す
+    let bestWord = '';
+    let maxScore = -1;
+    
+    const startRule = currentRule.start;
+    const endRule = currentRule.end;
+
+    for (const word of CPU_WORDS) {
+        const firstChar = word.charAt(0);
+        const lastChar = word.charAt(word.length - 1);
+        
+        // ルールに合い、かつ未使用の言葉を探す
+        const isStartValid = (firstChar === startRule);
+        const isEndValid = (lastChar === endRule);
+        const isUnused = !usedWords.includes(word);
+
+        if (isStartValid && isEndValid && isUnused) {
+            const score = word.length;
+            if (score > maxScore) {
+                maxScore = score;
+                bestWord = word;
+            }
+        }
+    }
+    
+    setTimeout(() => {
+        if (bestWord) {
+            processTurn(bestWord, CPU_TURN);
+        } else {
+            // 見つからなかった場合はギブアップ
+            processTurn('ギブアップ', CPU_TURN);
+        }
+        
+        // プレイヤーターンへ移行、または次のラウンドへ
+        if (!isGameOver) {
+            startNewRound();
+            submitButton.disabled = false;
+            wordInput.disabled = false;
+        }
+    }, 1500); // 1.5秒待ってから処理
+}
+
+
+// ----------------------------------------------
+// ターン終了後の処理
+// ----------------------------------------------
+
+function processTurn(word, player) {
+    const score = (word === 'ギブアップ') ? 0 : word.length;
+    
+    // スコアと履歴の更新
+    if (player === PLAYER_TURN) {
+        playerScore += score;
+        if (score > 0) usedWords.push(word);
+        addHistory(word, score, 'player-entry');
+    } else {
+        cpuScore += score;
+        if (score > 0) usedWords.push(word);
+        addHistory(word, score, 'cpu-entry');
+    }
+    
+    updateScore();
+}
+
+function updateScore() {
+    playerScoreSpan.textContent = playerScore;
+    cpuScoreSpan.textContent = cpuScore;
+}
+
+function updateTurnIndicator(message = '') {
+    if (message) {
+        turnIndicator.textContent = message;
+        return;
+    }
+    
+    if (currentPlayer === PLAYER_TURN) {
+        turnIndicator.textContent = 'あなたの番です';
+        turnIndicator.style.color = '#e63946';
+    } else {
+        turnIndicator.textContent = 'CPUの番です';
+        turnIndicator.style.color = '#4895ef';
+    }
+}
+
+function addHistory(word, score, className) {
+    const listItem = document.createElement('li');
+    const playerLabel = (className === 'player-entry') ? 'あなた' : 'CPU';
+    
+    if (word === 'ギブアップ') {
+        listItem.textContent = `${playerLabel}: ギブアップ (0点) - ルール: ${currentRule.start}→${currentRule.end}`;
+    } else {
+        listItem.textContent = `${playerLabel}: 「${word}」 (${score}点) - ルール: ${currentRule.start}→${currentRule.end}`;
+    }
+    
+    listItem.classList.add(className);
+    historyList.prepend(listItem); // 最新の履歴を上に追加
+}
+
+
+// ----------------------------------------------
+// ゲーム開始
+// ----------------------------------------------
+initGame();
+</script>
+
+</body>
+</html>
