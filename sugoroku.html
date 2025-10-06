@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>すごろくゲーム</title>
+<style>
+  body {
+    font-family: 'Arial', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #f4f4f9; /* 明るい背景 */
+    padding: 20px;
+  }
+  
+  h2 {
+    color: #333;
+    margin-bottom: 30px;
+  }
+
+  /* ボード全体 */
+  #gameBoard {
+    display: grid;
+    grid-template-columns: repeat(5, 70px); /* 5x5マス */
+    grid-template-rows: repeat(5, 70px);
+    border: 3px solid #333;
+    background-color: #fff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+  }
+
+  /* 個々のマス */
+  .square {
+    width: 70px;
+    height: 70px;
+    border: 1px solid #ddd;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-weight: bold;
+    font-size: 14px;
+    background-color: #e0f7fa; /* ターコイズ系 */
+    position: relative;
+    box-sizing: border-box;
+  }
+  
+  /* マス番号 */
+  .square-number {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    font-size: 12px;
+    color: #555;
+  }
+
+  /* 特殊マス */
+  .start { background-color: #a8dadc; } /* スタート: 薄い水色 */
+  .goal { background-color: #e63946; color: white; } /* ゴール: 赤 */
+  .penalty { background-color: #ffc900; } /* ペナルティ: 黄色 */
+  .bonus { background-color: #4895ef; color: white; } /* ボーナス: 青 */
+
+  /* 駒のスタイル */
+  .player-pieces {
+    position: absolute;
+    bottom: 5px;
+    display: flex;
+    gap: 2px;
+  }
+  
+  .piece {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 10px;
+    color: white;
+  }
+
+  .player-chip { background-color: #000000; } /* 黒 */
+  .cpu-chip { background-color: #4895ef; } /* 青 */
+
+  /* コントロールエリア */
+  #controlArea {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  #rollButton {
+    padding: 10px 30px;
+    font-size: 18px;
+    cursor: pointer;
+    background-color: #1d3557;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    transition: background-color 0.2s;
+  }
+  #rollButton:hover:not(:disabled) {
+    background-color: #457b9d;
+  }
+  #rollButton:disabled {
+    background-color: #ccc;
+    cursor: default;
+  }
+
+  /* メッセージエリア */
+  #messageArea {
+    margin-top: 15px;
+    font-size: 20px;
+    font-weight: bold;
+    min-height: 25px;
+    text-align: center;
+  }
+  
+  #diceResult {
+    font-size: 30px;
+    color: #e63946;
+    margin: 10px 0;
+  }
+</style>
+</head>
+<body>
+
+  <h2>黒 対 青 シンプルすごろく</h2>
+
+  <div id="gameBoard">
+    </div>
+
+  <div id="controlArea">
+    <div id="diceResult"></div>
+    <button id="rollButton" onclick="handleRoll()">サイコロを振る ()</button>
+    <div id="messageArea">サイコロを振ってスタート！</div>
+  </div>
+
+<script>
+// JavaScript: ゲームロジック
+
+// ----------------------------------------------
+// 定数と変数
+// ----------------------------------------------
+
+const BOARD_SIZE = 25; // 5x5マス
+const PLAYER = 1; // プレイヤーID (黒)
+const CPU = 2;    // CPU ID (青)
+
+let playerPosition = 1;
+let cpuPosition = 1;
+let currentPlayer = PLAYER;
+let isGameOver = false;
+let isRolling = false; // サイコロ振り中のフラグ
+
+// 特殊マス定義 (マス番号は1から25)
+const SPECIAL_SQUARES = {
+    // ボーナス: 3マス進む
+    3: { type: 'bonus', effect: 3, message: 'ボーナス！3マス進む！' },
+    11: { type: 'bonus', effect: 4, message: 'ラッキー！4マス進む！' },
+    // ペナルティ: 2マス戻る
+    7: { type: 'penalty', effect: -2, message: '落とし穴…2マス戻る。' },
+    18: { type: 'penalty', effect: -3, message: '休憩！3マス戻る。' }
+};
+
+const gameBoardDiv = document.getElementById('gameBoard');
+const rollButton = document.getElementById('rollButton');
+const diceResultDiv = document.getElementById('diceResult');
+const messageArea = document.getElementById('messageArea');
+
+// ----------------------------------------------
+// 初期化・描画
+// ----------------------------------------------
+
+function initGame() {
+    playerPosition = 1;
+    cpuPosition = 1;
+    currentPlayer = PLAYER;
+    isGameOver = false;
+    isRolling = false;
+    
+    renderBoard();
+    updateControls(PLAYER, 'サイコロを振ってスタート！');
+}
+
+function renderBoard() {
+    gameBoardDiv.innerHTML = '';
+    
+    // マスを生成 (1から25)
+    for (let i = 1; i <= BOARD_SIZE; i++) {
+        const squareDiv = document.createElement('div');
+        squareDiv.className = 'square';
+        
+        // 特殊マス判定とクラス付与
+        if (i === 1) {
+            squareDiv.classList.add('start');
+        } else if (i === BOARD_SIZE) {
+            squareDiv.classList.add('goal');
+            squareDiv.textContent = 'GOAL';
+        } else if (SPECIAL_SQUARES[i]) {
+            squareDiv.classList.add(SPECIAL_SQUARES[i].type);
+        }
+        
+        // マス番号
+        const numberSpan = document.createElement('span');
+        numberSpan.className = 'square-number';
+        numberSpan.textContent = i;
+        squareDiv.appendChild(numberSpan);
+
+        // 駒の表示
+        const piecesDiv = document.createElement('div');
+        piecesDiv.className = 'player-pieces';
+
+        if (playerPosition === i) {
+            const playerChip = document.createElement('div');
+            playerChip.className = 'piece player-chip';
+            piecesDiv.appendChild(playerChip);
+        }
+        if (cpuPosition === i) {
+            const cpuChip = document.createElement('div');
+            cpuChip.className = 'piece cpu-chip';
+            piecesDiv.appendChild(cpuChip);
+        }
+        
+        squareDiv.appendChild(piecesDiv);
+        gameBoardDiv.appendChild(squareDiv);
+    }
+}
+
+function updateControls(player, message) {
+    messageArea.textContent = message;
+    
+    if (isGameOver) {
+        rollButton.textContent = 'ゲーム終了';
+        rollButton.disabled = true;
+        messageArea.style.color = '#e63946';
+        return;
+    }
+    
+    const chipText = (player === PLAYER) ? '' : '';
+    rollButton.textContent = `サイコロを振る (${chipText})`;
+    rollButton.disabled = (player === CPU || isRolling);
+    messageArea.style.color = (player === PLAYER) ? '#000000' : '#4895ef';
+}
+
+// ----------------------------------------------
+// ゲームロジック
+// ----------------------------------------------
+
+function handleRoll() {
+    if (isGameOver || isRolling || currentPlayer !== PLAYER) return;
+    
+    isRolling = true;
+    rollButton.disabled = true;
+    
+    const roll = Math.floor(Math.random() * 6) + 1; // 1から6のサイコロ
+    
+    // サイコロアニメーション
+    animateDice(roll, () => {
+        movePiece(PLAYER, roll);
+        
+        // CPUターンへ移行
+        if (!isGameOver) {
+            setTimeout(cpuTurn, 1500); // 1.5秒後にCPUを動かす
+        }
+    });
+}
+
+function cpuTurn() {
+    if (isGameOver) return;
+    
+    currentPlayer = CPU;
+    updateControls(CPU, 'コンピューターの番です ()...');
+    
+    isRolling = true;
+    const roll = Math.floor(Math.random() * 6) + 1;
+    
+    // サイコロアニメーション
+    animateDice(roll, () => {
+        movePiece(CPU, roll);
+        
+        // プレイヤーターンへ移行
+        if (!isGameOver) {
+            currentPlayer = PLAYER;
+            updateControls(PLAYER, 'あなたの番です ()');
+        }
+    });
+}
+
+function animateDice(roll, callback) {
+    let count = 0;
+    const interval = setInterval(() => {
+        diceResultDiv.textContent = ' ' + (Math.floor(Math.random() * 6) + 1);
+        count++;
+        if (count > 10) { // 10回のアニメーション
+            clearInterval(interval);
+            diceResultDiv.textContent = `出た目: ${roll}`;
+            
+            // 駒移動処理へ
+            setTimeout(() => {
+                isRolling = false;
+                if (!isGameOver) {
+                    rollButton.disabled = (currentPlayer === CPU);
+                }
+                callback();
+            }, 500); // 0.5秒表示後に移動
+        }
+    }, 100);
+}
+
+function movePiece(player, roll) {
+    let currentPos = (player === PLAYER) ? playerPosition : cpuPosition;
+    let nextPos = currentPos + roll;
+    
+    // ゴール判定
+    if (nextPos >= BOARD_SIZE) {
+        if (player === PLAYER) {
+            playerPosition = BOARD_SIZE;
+            updateControls(player, ` ゴール！あなたの勝ちです！`);
+        } else {
+            cpuPosition = BOARD_SIZE;
+            updateControls(player, ` ゴール！コンピューターの勝ちです！`);
+        }
+        isGameOver = true;
+        renderBoard();
+        return;
+    }
+
+    // 駒の位置を更新
+    if (player === PLAYER) {
+        playerPosition = nextPos;
+    } else {
+        cpuPosition = nextPos;
+    }
+    renderBoard();
+
+    // 特殊マス効果判定
+    if (SPECIAL_SQUARES[nextPos]) {
+        const special = SPECIAL_SQUARES[nextPos];
+        
+        setTimeout(() => {
+            messageArea.textContent = special.message;
+            
+            // 効果を適用
+            let finalPos = nextPos + special.effect;
+            
+            // 1マス目が最少
+            if (finalPos < 1) finalPos = 1;
+            
+            if (player === PLAYER) {
+                playerPosition = finalPos;
+            } else {
+                cpuPosition = finalPos;
+            }
+            
+            renderBoard();
+            
+            // 特殊マス効果後のゴール判定
+            if (finalPos >= BOARD_SIZE) {
+                if (player === PLAYER) {
+                    updateControls(player, ` 特殊マスでゴール！あなたの勝ちです！`);
+                } else {
+                    updateControls(player, ` 特殊マスでゴール！コンピューターの勝ちです！`);
+                }
+                isGameOver = true;
+                return;
+            }
+        }, 800);
+    }
+}
+
+
+// ----------------------------------------------
+// ゲーム開始
+// ----------------------------------------------
+initGame();
+</script>
+
+</body>
+</html>
